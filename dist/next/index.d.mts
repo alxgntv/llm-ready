@@ -9,12 +9,16 @@ interface LlmReadyConfig {
     exclude?: string[];
     /** llms.txt generation settings */
     llmsTxt?: {
+        /** Site name for llms.txt header. If not set, extracted from siteUrl hostname */
+        siteName?: string;
+        /** Site description for llms.txt header */
+        description?: string;
+        /** Static list of page paths to always include in llms.txt (e.g. ['/pricing', '/docs']) */
+        pages?: string[];
         /** Custom sections: key = section title, value = glob patterns for URLs */
         sections?: Record<string, string[]>;
         /** URL patterns that go into the ## Optional section */
         optional?: string[];
-        /** Manual site description (overrides auto-detected <meta description>) */
-        description?: string;
     };
     /** Cache settings */
     cache?: {
@@ -93,8 +97,8 @@ declare function createMarkdownHandler(config: LlmReadyConfig): (request: NextRe
  *   import { createLlmsTxtHandler } from 'llm-ready/next';
  *   import config from '../../../llm-ready.config';
  *   export const GET = createLlmsTxtHandler(config);
- *   export const revalidate = 86400; // ISR: regenerate every 24h
+ *   export const revalidate = 86400;
  */
-declare function createLlmsTxtHandler(config: LlmReadyConfig): (request: NextRequest) => Promise<NextResponse>;
+declare function createLlmsTxtHandler(config: LlmReadyConfig): (_request: NextRequest) => Promise<NextResponse>;
 
 export { BYPASS_HEADER, LLM_PATH_PREFIX, createLlmsTxtHandler, createMarkdownHandler, llmReady };

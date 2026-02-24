@@ -10,12 +10,16 @@ export interface LlmReadyConfig {
 
   /** llms.txt generation settings */
   llmsTxt?: {
+    /** Site name for llms.txt header. If not set, extracted from siteUrl hostname */
+    siteName?: string;
+    /** Site description for llms.txt header */
+    description?: string;
+    /** Static list of page paths to always include in llms.txt (e.g. ['/pricing', '/docs']) */
+    pages?: string[];
     /** Custom sections: key = section title, value = glob patterns for URLs */
     sections?: Record<string, string[]>;
     /** URL patterns that go into the ## Optional section */
     optional?: string[];
-    /** Manual site description (overrides auto-detected <meta description>) */
-    description?: string;
   };
 
   /** Cache settings */

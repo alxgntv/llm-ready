@@ -1,88 +1,90 @@
 import type { LlmReadyConfig, LlmsTxtPage, LlmsTxtSection } from './types';
-import { discoverPages, type SitemapPage } from './sitemap-parser';
 
 /**
  * Generates llms.txt content per llmstxt.org spec (v1.1.1).
  *
- * Format is Markdown (NOT robots.txt directives):
+ * Zero HTTP requests — everything is derived from config.
+ * Pages come from config.llmsTxt.pages and config.llmsTxt.optional.
+ *
+ * Format is Markdown:
  *   # Site Name
  *   > Short description
  *   ## Section
- *   - [Title](url): description
+ *   - [Title](url)
  *   ## Optional
- *   - [Title](url): lower-priority content
+ *   - [Title](url)
  */
 
-const OPTIONAL_PATTERNS_DEFAULT = [
-  '/terms',
-  '/privacy',
-  '/cookie',
-  '/about',
-  '/contacts',
-  '/career',
-  '/affiliate',
-  '/refund',
-  '/payment-methods',
-];
-
-/**
- * Generates the full llms.txt Markdown string.
- */
-export async function generateLlmsTxt(
-  config: LlmReadyConfig
-): Promise<string> {
+export function generateLlmsTxt(config: LlmReadyConfig): string {
   const siteUrl = config.siteUrl.replace(/\/+$/, '');
-  const fetchOrigin = (config._fetchOrigin || siteUrl).replace(/\/+$/, '');
-  console.log(`[llm-ready] Generating llms.txt for ${siteUrl} (fetching via ${fetchOrigin})`);
+  console.log(`[llm-ready] Generating llms.txt for ${siteUrl} (static mode, zero HTTP)`);
 
-  // 1. Discover all pages (use fetchOrigin for HTTP calls)
-  const sitemapPages = await discoverPages(fetchOrigin, config.sitemap);
-  console.log(`[llm-ready] Discovered ${sitemapPages.length} pages for llms.txt`);
+  const siteName = config.llmsTxt?.siteName || extractHostname(siteUrl);
+  const description = config.llmsTxt?.description || '';
 
-  // 2. Filter out excluded paths
+  // Collect all pages from config
+  const configPages = config.llmsTxt?.pages || [];
+  const optionalPaths = config.llmsTxt?.optional || [];
   const excludePatterns = config.exclude || [];
-  const filteredPages = sitemapPages.filter(
-    (page) => !isExcluded(page.url, siteUrl, excludePatterns)
-  );
-  console.log(
-    `[llm-ready] After exclusions: ${filteredPages.length} pages (excluded ${sitemapPages.length - filteredPages.length})`
-  );
 
-  // 3. Rewrite page URLs from fetchOrigin to canonical siteUrl
-  const canonicalPages = filteredPages.map((page) => ({
-    ...page,
-    url: page.url.replace(fetchOrigin, siteUrl),
-  }));
+  // Build main pages list (always includes homepage)
+  const mainPages: LlmsTxtPage[] = [
+    { url: siteUrl, title: 'Home' },
+  ];
 
-  // 4. Fetch metadata for pages (use fetchOrigin URLs for HTTP, but store canonical)
-  const pagesWithMeta = await fetchPageMetadata(filteredPages, canonicalPages, fetchOrigin, siteUrl);
+  // Add configured pages
+  for (const pagePath of configPages) {
+    const path = pagePath.startsWith('/') ? pagePath : `/${pagePath}`;
+    if (isExcluded(path, excludePatterns)) continue;
+    mainPages.push({
+      url: `${siteUrl}${path}`,
+      title: pathToTitle(path),
+    });
+  }
 
-  // 5. Group into sections
-  const optionalPatterns = config.llmsTxt?.optional || OPTIONAL_PATTERNS_DEFAULT;
+  // Build optional pages list
+  const optionalPages: LlmsTxtPage[] = [];
+  for (const pagePath of optionalPaths) {
+    const path = pagePath.startsWith('/') ? pagePath : `/${pagePath}`;
+    if (isExcluded(path, excludePatterns)) continue;
+    optionalPages.push({
+      url: `${siteUrl}${path}`,
+      title: pathToTitle(path),
+    });
+  }
+
+  // Group main pages into sections
+  const sections: LlmsTxtSection[] = [];
   const customSections = config.llmsTxt?.sections;
-  const sections = groupIntoSections(pagesWithMeta, siteUrl, optionalPatterns, customSections);
 
-  // 6. Build site header
-  const siteName = await fetchSiteName(fetchOrigin);
-  const siteDescription =
-    config.llmsTxt?.description || (await fetchSiteDescription(fetchOrigin));
+  if (customSections && Object.keys(customSections).length > 0) {
+    const assigned = new Set<string>();
 
-  // 6. Generate markdown
-  const llmsTxt = buildLlmsTxt(siteName, siteDescription, sections);
+    for (const [title, patterns] of Object.entries(customSections)) {
+      const sectionPages = mainPages.filter((page) => {
+        const path = new URL(page.url).pathname;
+        return patterns.some((p) => matchGlob(path, p));
+      });
+      if (sectionPages.length > 0) {
+        sections.push({ title, pages: sectionPages });
+        sectionPages.forEach((p) => assigned.add(p.url));
+      }
+    }
 
-  console.log(
-    `[llm-ready] llms.txt generated: ${llmsTxt.length} chars, ${sections.length} sections`
-  );
-  return llmsTxt;
-}
+    const unassigned = mainPages.filter((p) => !assigned.has(p.url));
+    if (unassigned.length > 0) {
+      sections.push({ title: 'Pages', pages: unassigned });
+    }
+  } else {
+    sections.push({ title: 'Pages', pages: mainPages });
+  }
 
-function buildLlmsTxt(
-  siteName: string,
-  description: string,
-  sections: LlmsTxtSection[]
-): string {
+  if (optionalPages.length > 0) {
+    sections.push({ title: 'Optional', pages: optionalPages });
+  }
+
+  // Build output
   const lines: string[] = [];
-
   lines.push(`# ${siteName}`);
   lines.push('');
   if (description) {
@@ -94,243 +96,26 @@ function buildLlmsTxt(
     lines.push(`## ${section.title}`);
     lines.push('');
     for (const page of section.pages) {
-      const desc = page.description ? `: ${page.description}` : '';
-      lines.push(`- [${page.title}](${page.url})${desc}`);
+      lines.push(`- [${page.title}](${page.url})`);
     }
     lines.push('');
   }
 
-  return lines.join('\n').trim() + '\n';
+  const result = lines.join('\n').trim() + '\n';
+  console.log(`[llm-ready] llms.txt generated: ${result.length} chars, ${sections.length} sections, ${mainPages.length + optionalPages.length} pages`);
+  return result;
 }
 
-function groupIntoSections(
-  pages: LlmsTxtPage[],
-  siteUrl: string,
-  optionalPatterns: string[],
-  customSections?: Record<string, string[]>
-): LlmsTxtSection[] {
-  // If custom sections defined, use them
-  if (customSections && Object.keys(customSections).length > 0) {
-    return groupByCustomSections(pages, siteUrl, customSections, optionalPatterns);
-  }
-
-  // Auto-group by path structure
-  return autoGroupSections(pages, siteUrl, optionalPatterns);
-}
-
-function groupByCustomSections(
-  pages: LlmsTxtPage[],
-  siteUrl: string,
-  customSections: Record<string, string[]>,
-  optionalPatterns: string[]
-): LlmsTxtSection[] {
-  const sections: LlmsTxtSection[] = [];
-  const assigned = new Set<string>();
-
-  for (const [title, patterns] of Object.entries(customSections)) {
-    const sectionPages: LlmsTxtPage[] = [];
-    for (const page of pages) {
-      const path = getPath(page.url, siteUrl);
-      if (patterns.some((p) => matchGlob(path, p))) {
-        sectionPages.push(page);
-        assigned.add(page.url);
-      }
-    }
-    if (sectionPages.length > 0) {
-      sections.push({ title, pages: sectionPages });
-    }
-  }
-
-  // Remaining unassigned pages
-  const optional: LlmsTxtPage[] = [];
-  const other: LlmsTxtPage[] = [];
-
-  for (const page of pages) {
-    if (assigned.has(page.url)) continue;
-    const path = getPath(page.url, siteUrl);
-    if (optionalPatterns.some((p) => path.startsWith(p))) {
-      optional.push(page);
-    } else {
-      other.push(page);
-    }
-  }
-
-  if (other.length > 0) {
-    sections.push({ title: 'Pages', pages: other });
-  }
-  if (optional.length > 0) {
-    sections.push({ title: 'Optional', pages: optional });
-  }
-
-  return sections;
-}
-
-function autoGroupSections(
-  pages: LlmsTxtPage[],
-  siteUrl: string,
-  optionalPatterns: string[]
-): LlmsTxtSection[] {
-  const groups: Record<string, LlmsTxtPage[]> = {};
-  const optional: LlmsTxtPage[] = [];
-  const homepage: LlmsTxtPage[] = [];
-
-  for (const page of pages) {
-    const path = getPath(page.url, siteUrl);
-
-    if (path === '' || path === '/') {
-      homepage.push(page);
-      continue;
-    }
-
-    if (optionalPatterns.some((p) => path.startsWith(p))) {
-      optional.push(page);
-      continue;
-    }
-
-    // Group by first path segment
-    const firstSegment = path.split('/').filter(Boolean)[0] || 'pages';
-    const groupName = firstSegment.charAt(0).toUpperCase() + firstSegment.slice(1);
-
-    if (!groups[groupName]) groups[groupName] = [];
-    groups[groupName].push(page);
-  }
-
-  const sections: LlmsTxtSection[] = [];
-
-  // Homepage first (if exists)
-  if (homepage.length > 0) {
-    sections.push({ title: 'Main', pages: homepage });
-  }
-
-  // Sort groups by size (largest first)
-  const sortedGroups = Object.entries(groups).sort(
-    (a, b) => b[1].length - a[1].length
-  );
-  for (const [title, groupPages] of sortedGroups) {
-    sections.push({ title, pages: groupPages });
-  }
-
-  // Optional section always last
-  if (optional.length > 0) {
-    sections.push({ title: 'Optional', pages: optional });
-  }
-
-  return sections;
-}
-
-async function fetchPageMetadata(
-  fetchPages: SitemapPage[],
-  canonicalPages: SitemapPage[],
-  fetchOrigin: string,
-  siteUrl: string
-): Promise<LlmsTxtPage[]> {
-  console.log(
-    `[llm-ready] Fetching metadata for ${fetchPages.length} pages (batched)`
-  );
-
-  const BATCH_SIZE = 10;
-  const results: LlmsTxtPage[] = [];
-
-  for (let i = 0; i < fetchPages.length; i += BATCH_SIZE) {
-    const fetchBatch = fetchPages.slice(i, i + BATCH_SIZE);
-    const canonicalBatch = canonicalPages.slice(i, i + BATCH_SIZE);
-    const batchResults = await Promise.all(
-      fetchBatch.map(async (page, idx) => {
-        const canonicalUrl = canonicalBatch[idx].url;
-        try {
-          const res = await fetch(page.url, {
-            headers: { 'User-Agent': 'llm-ready/metadata-fetch' },
-          });
-          if (!res.ok) return null;
-
-          const html = await res.text();
-          const title = extractMetaTitle(html) || getPathLabel(canonicalUrl, siteUrl);
-          const description = extractMetaDescription(html);
-
-          return { url: canonicalUrl, title, description };
-        } catch {
-          return {
-            url: canonicalUrl,
-            title: getPathLabel(canonicalUrl, siteUrl),
-            description: undefined,
-          };
-        }
-      })
-    );
-
-    for (const r of batchResults) {
-      if (r) results.push(r);
-    }
-  }
-
-  console.log(`[llm-ready] Fetched metadata for ${results.length} pages`);
-  return results;
-}
-
-async function fetchSiteName(siteUrl: string): Promise<string> {
+function extractHostname(url: string): string {
   try {
-    const res = await fetch(siteUrl);
-    if (!res.ok) return new URL(siteUrl).hostname;
-    const html = await res.text();
-    const title = extractMetaTitle(html);
-    // Use og:site_name or application-name if available
-    const siteName =
-      html.match(
-        /<meta\s[^>]*property\s*=\s*["']og:site_name["'][^>]*content\s*=\s*["']([^"']*)["']/i
-      )?.[1] ||
-      html.match(
-        /<meta\s[^>]*name\s*=\s*["']application-name["'][^>]*content\s*=\s*["']([^"']*)["']/i
-      )?.[1];
-    return siteName || title || new URL(siteUrl).hostname;
+    const hostname = new URL(url).hostname;
+    return hostname.replace(/^www\./, '');
   } catch {
-    return new URL(siteUrl).hostname;
+    return url;
   }
 }
 
-async function fetchSiteDescription(siteUrl: string): Promise<string> {
-  try {
-    const res = await fetch(siteUrl);
-    if (!res.ok) return '';
-    const html = await res.text();
-    return extractMetaDescription(html) || '';
-  } catch {
-    return '';
-  }
-}
-
-function extractMetaTitle(html: string): string {
-  const ogTitle = html.match(
-    /<meta\s[^>]*property\s*=\s*["']og:title["'][^>]*content\s*=\s*["']([^"']*)["']/i
-  );
-  if (ogTitle) return ogTitle[1];
-
-  const titleTag = html.match(/<title\b[^>]*>([\s\S]*?)<\/title>/i);
-  return titleTag ? titleTag[1].trim() : '';
-}
-
-function extractMetaDescription(html: string): string | undefined {
-  const ogDesc = html.match(
-    /<meta\s[^>]*property\s*=\s*["']og:description["'][^>]*content\s*=\s*["']([^"']*)["']/i
-  );
-  if (ogDesc) return ogDesc[1];
-
-  const desc = html.match(
-    /<meta\s[^>]*name\s*=\s*["']description["'][^>]*content\s*=\s*["']([^"']*)["']/i
-  );
-  return desc ? desc[1] : undefined;
-}
-
-function getPath(url: string, siteUrl: string): string {
-  try {
-    const parsed = new URL(url);
-    return parsed.pathname.replace(/\/+$/, '') || '/';
-  } catch {
-    return url.replace(siteUrl, '').replace(/\/+$/, '') || '/';
-  }
-}
-
-function getPathLabel(url: string, siteUrl: string): string {
-  const path = getPath(url, siteUrl);
+function pathToTitle(path: string): string {
   if (path === '/' || path === '') return 'Home';
   return path
     .split('/')
@@ -340,12 +125,7 @@ function getPathLabel(url: string, siteUrl: string): string {
     .join(' — ');
 }
 
-function isExcluded(
-  url: string,
-  siteUrl: string,
-  patterns: string[]
-): boolean {
-  const path = getPath(url, siteUrl);
+function isExcluded(path: string, patterns: string[]): boolean {
   return patterns.some((p) => matchGlob(path, p));
 }
 

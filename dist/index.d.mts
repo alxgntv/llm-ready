@@ -35,12 +35,16 @@ interface LlmReadyConfig {
     exclude?: string[];
     /** llms.txt generation settings */
     llmsTxt?: {
+        /** Site name for llms.txt header. If not set, extracted from siteUrl hostname */
+        siteName?: string;
+        /** Site description for llms.txt header */
+        description?: string;
+        /** Static list of page paths to always include in llms.txt (e.g. ['/pricing', '/docs']) */
+        pages?: string[];
         /** Custom sections: key = section title, value = glob patterns for URLs */
         sections?: Record<string, string[]>;
         /** URL patterns that go into the ## Optional section */
         optional?: string[];
-        /** Manual site description (overrides auto-detected <meta description>) */
-        description?: string;
     };
     /** Cache settings */
     cache?: {
@@ -109,43 +113,20 @@ interface ConverterOptions {
 declare function convertHtmlToMarkdown(html: string, pageUrl: string, options?: ConverterOptions): ConvertResult;
 
 /**
- * Generates the full llms.txt Markdown string.
- */
-declare function generateLlmsTxt(config: LlmReadyConfig): Promise<string>;
-
-/**
- * Discovers and parses sitemap to get a list of all site pages.
+ * Generates llms.txt content per llmstxt.org spec (v1.1.1).
  *
- * Discovery chain:
- * 1. Config-provided sitemap path
- * 2. robots.txt Sitemap: directive
- * 3. Standard paths: /sitemap.xml, /sitemap_index.xml
- * 4. Crawl homepage for internal links (fallback)
+ * Zero HTTP requests — everything is derived from config.
+ * Pages come from config.llmsTxt.pages and config.llmsTxt.optional.
+ *
+ * Format is Markdown:
+ *   # Site Name
+ *   > Short description
+ *   ## Section
+ *   - [Title](url)
+ *   ## Optional
+ *   - [Title](url)
  */
-interface SitemapPage {
-    url: string;
-    lastmod?: string;
-}
-/**
- * Discovers sitemap URL from available sources.
- * Returns the first working sitemap URL or null.
- */
-declare function discoverSitemap(siteUrl: string, configSitemap?: string): Promise<string | null>;
-/**
- * Parses a sitemap XML and returns all page URLs.
- * Handles both regular sitemaps and sitemap index files.
- */
-declare function parseSitemap(sitemapUrl: string): Promise<SitemapPage[]>;
-/**
- * Fallback: crawl homepage and collect internal links.
- * Limited depth to avoid excessive crawling.
- */
-declare function crawlHomepage(siteUrl: string, maxPages?: number): Promise<SitemapPage[]>;
-/**
- * Full discovery pipeline: sitemap → robots.txt → standard paths → crawl.
- * Returns list of all discovered pages.
- */
-declare function discoverPages(siteUrl: string, configSitemap?: string): Promise<SitemapPage[]>;
+declare function generateLlmsTxt(config: LlmReadyConfig): string;
 
 interface BotDetectOptions {
     additionalUserAgents?: string[];
@@ -166,4 +147,4 @@ declare function detectBot(userAgent: string | null, acceptHeader: string | null
 /** Quick check — returns true if request is from an LLM bot */
 declare function isLlmBot(userAgent: string | null, acceptHeader: string | null, options?: BotDetectOptions): boolean;
 
-export { type BotDetectOptions, type BotDetectResult, type ConvertResult, DEFAULT_CONFIG, type LlmReadyConfig, type LlmsTxtPage, type LlmsTxtSection, type SitemapPage, convertHtmlToMarkdown, crawlHomepage, detectBot, discoverPages, discoverSitemap, extractMainContent, generateLlmsTxt, isLlmBot, parseSitemap, removeChrome, sanitizeHtml };
+export { type BotDetectOptions, type BotDetectResult, type ConvertResult, DEFAULT_CONFIG, type LlmReadyConfig, type LlmsTxtPage, type LlmsTxtSection, convertHtmlToMarkdown, detectBot, extractMainContent, generateLlmsTxt, isLlmBot, removeChrome, sanitizeHtml };

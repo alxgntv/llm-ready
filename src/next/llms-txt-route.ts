@@ -10,25 +10,14 @@ import type { LlmReadyConfig } from '../core/types';
  *   import { createLlmsTxtHandler } from 'llm-ready/next';
  *   import config from '../../../llm-ready.config';
  *   export const GET = createLlmsTxtHandler(config);
- *   export const revalidate = 86400; // ISR: regenerate every 24h
+ *   export const revalidate = 86400;
  */
 export function createLlmsTxtHandler(config: LlmReadyConfig) {
-  return async function GET(request: NextRequest): Promise<NextResponse> {
+  return async function GET(_request: NextRequest): Promise<NextResponse> {
     console.log('[llm-ready] llms.txt route handler called');
 
     try {
-      // Use actual origin for fetching sitemap/pages (works on localhost and prod)
-      const fetchOrigin =
-        request.headers.get('x-llm-ready-origin') ||
-        request.nextUrl.origin;
-
-      const runtimeConfig: LlmReadyConfig = {
-        ...config,
-        // _fetchOrigin is used internally for HTTP calls; siteUrl stays canonical
-        _fetchOrigin: fetchOrigin,
-      };
-
-      const content = await generateLlmsTxt(runtimeConfig);
+      const content = generateLlmsTxt(config);
 
       console.log(`[llm-ready] Serving llms.txt: ${content.length} chars`);
 
