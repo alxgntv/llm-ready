@@ -31,14 +31,30 @@ export function createMarkdownHandler(config: LlmReadyConfig) {
     console.log(`[llm-ready] Markdown route handler called for: ${originalPath}`);
 
     try {
-      console.log(`[llm-ready] Fetching original HTML from: ${pageUrl}`);
-      const htmlResponse = await fetch(pageUrl, {
-        headers: {
-          [BYPASS_HEADER]: 'true',
-          'User-Agent': 'llm-ready/self-fetch',
-        },
-        redirect: 'manual',
-      });
+      const SELF_FETCH_TIMEOUT_MS = 5000;
+      console.log(`[llm-ready] Fetching original HTML from: ${pageUrl} (timeout: ${SELF_FETCH_TIMEOUT_MS}ms)`);
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), SELF_FETCH_TIMEOUT_MS);
+
+      let htmlResponse: Response;
+      try {
+        htmlResponse = await fetch(pageUrl, {
+          headers: {
+            [BYPASS_HEADER]: 'true',
+            'User-Agent': 'llm-ready/self-fetch',
+          },
+          redirect: 'manual',
+          signal: controller.signal,
+        });
+      } catch (fetchErr: any) {
+        clearTimeout(timeoutId);
+        if (fetchErr.name === 'AbortError') {
+          console.log(`[llm-ready] Self-fetch timed out after ${SELF_FETCH_TIMEOUT_MS}ms for: ${originalPath}`);
+          return new NextResponse('Page fetch timed out', { status: 504 });
+        }
+        throw fetchErr;
+      }
+      clearTimeout(timeoutId);
 
       // If original page redirects, pass the redirect through
       if (
