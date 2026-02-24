@@ -478,7 +478,6 @@ function createMarkdownHandler(config) {
         headers: {
           "Content-Type": "text/markdown; charset=utf-8",
           "Link": `<${result.canonicalUrl}>; rel="canonical"`,
-          "X-Robots-Tag": "noindex",
           "X-Markdown-Tokens": String(result.tokenEstimate),
           "X-Content-Source": pageUrl,
           "Cache-Control": `public, s-maxage=${config.cache?.ttl || 86400}, stale-while-revalidate`
