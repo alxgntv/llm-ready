@@ -23,9 +23,6 @@ var HIDDEN_CSS_PATTERNS = [
   /visibility\s*:\s*hidden/i,
   /opacity\s*:\s*0(?:[;\s]|$)/i,
   /font-size\s*:\s*0(?:px|em|rem|%)?(?:[;\s]|$)/i,
-  /height\s*:\s*0(?:px|em|rem)?(?:[;\s]|$)/i,
-  /width\s*:\s*0(?:px|em|rem)?(?:[;\s]|$)/i,
-  /overflow\s*:\s*hidden/i,
   /clip\s*:\s*rect\s*\(\s*0/i,
   /position\s*:\s*absolute[^;]*left\s*:\s*-\d{4,}/i,
   /position\s*:\s*absolute[^;]*top\s*:\s*-\d{4,}/i
