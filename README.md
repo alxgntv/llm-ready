@@ -68,7 +68,7 @@ Simple, transparent pricing for teams of all sizes.
 
 ## Free Alternative to Cloudflare
 
-Cloudflare launched [Markdown for Agents](https://blog.cloudflare.com/markdown-for-agents/) in February 2026 — it does the same thing (HTML → Markdown via `Accept: text/markdown`) but requires a Cloudflare Pro plan (**$200+/month**).
+Cloudflare launched [Markdown for Agents](https://blog.cloudflare.com/markdown-for-agents/) in February 2026 — it does the same thing (HTML → Markdown via `Accept: text/markdown`) but requires a Cloudflare Pro plan (**$25+/month**).
 
 | | Cloudflare Markdown for Agents | llm-ready |
 |---|---|---|
