@@ -141,14 +141,23 @@ export function extractMainContent(
     }
   }
 
-  // Auto-detect: try <main>, <article>, [role="main"] in order
-  const selectors = ['main', 'article'];
-  for (const sel of selectors) {
-    const extracted = extractBySelector(html, sel);
-    if (extracted) {
-      console.log(`[llm-ready] Auto-detected main content using <${sel}>`);
-      return extracted;
+  // Auto-detect: try <main>, then <article> (only if single), then [role="main"]
+  const mainExtracted = extractBySelector(html, 'main');
+  if (mainExtracted) {
+    console.log('[llm-ready] Auto-detected main content using <main>');
+    return mainExtracted;
+  }
+
+  // Only use <article> if there is exactly one on the page
+  const articleCount = (html.match(/<article\b/gi) || []).length;
+  if (articleCount === 1) {
+    const articleExtracted = extractBySelector(html, 'article');
+    if (articleExtracted) {
+      console.log('[llm-ready] Auto-detected main content using single <article>');
+      return articleExtracted;
     }
+  } else if (articleCount > 1) {
+    console.log(`[llm-ready] Found ${articleCount} <article> tags, skipping — falling back to <body>`);
   }
 
   // Try role="main"

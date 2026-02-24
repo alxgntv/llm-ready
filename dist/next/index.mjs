@@ -214,13 +214,20 @@ function extractMainContent(html, contentSelector) {
       return extracted;
     }
   }
-  const selectors = ["main", "article"];
-  for (const sel of selectors) {
-    const extracted = extractBySelector(html, sel);
-    if (extracted) {
-      console.log(`[llm-ready] Auto-detected main content using <${sel}>`);
-      return extracted;
+  const mainExtracted = extractBySelector(html, "main");
+  if (mainExtracted) {
+    console.log("[llm-ready] Auto-detected main content using <main>");
+    return mainExtracted;
+  }
+  const articleCount = (html.match(/<article\b/gi) || []).length;
+  if (articleCount === 1) {
+    const articleExtracted = extractBySelector(html, "article");
+    if (articleExtracted) {
+      console.log("[llm-ready] Auto-detected main content using single <article>");
+      return articleExtracted;
     }
+  } else if (articleCount > 1) {
+    console.log(`[llm-ready] Found ${articleCount} <article> tags, skipping \u2014 falling back to <body>`);
   }
   const roleMainMatch = html.match(
     /<(\w+)\b[^>]*role\s*=\s*["']main["'][^>]*>([\s\S]*?)<\/\1>/i
