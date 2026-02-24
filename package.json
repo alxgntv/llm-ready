@@ -1,6 +1,6 @@
 {
   "name": "llm-ready",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Universal npm library that makes any website LLM-ready. Auto-converts HTML pages to Markdown for AI bots, generates llms.txt, detects LLM crawlers.",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
