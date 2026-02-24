@@ -241,6 +241,11 @@ interface LlmReadyConfig {
    - curl -H "User-Agent: GPTBot/1.0" http://localhost:3000/<some-real-page>
    - Verify all three return clean markdown content, not HTML or errors
 
+8. Check HTML structure:
+   - Verify that public pages wrap their primary content in a <main> tag
+   - If pages don't use <main>, set config.converter.contentSelector to the CSS selector of the main content container
+   - Without <main> or contentSelector, the converter falls back to <body> which includes nav, footer, and other chrome
+
 Important: Do NOT break any existing functionality. The llmReady() middleware check returns null for normal users — existing behavior is completely unchanged.
 ```
 
@@ -351,6 +356,20 @@ request
   → sanitize → extract main content → convert to markdown
   → Response: text/markdown with canonical link header
 ```
+
+### Content extraction priority
+
+The converter looks for main content in this order:
+
+1. **Custom selector** — `config.converter.contentSelector` (if set)
+2. **`<main>`** — the semantic HTML5 main content element
+3. **Single `<article>`** — only if there is exactly one `<article>` on the page
+4. **`[role="main"]`** — ARIA role attribute
+5. **`<body>`** — fallback: entire body content
+
+For best results, wrap your page content in a `<main>` tag. If there is no `<main>` and the page has multiple `<article>` elements (e.g. blog cards, product listings), the converter skips them and falls back to `<body>`, which includes everything — navigation, footer, sidebars. You can avoid this by either:
+- Adding a `<main>` tag around your primary content (recommended for semantics and accessibility anyway)
+- Setting `config.converter.contentSelector` to target your content container (e.g. `'div.page-content'`)
 
 ## Configuration
 
