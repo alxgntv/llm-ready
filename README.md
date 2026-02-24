@@ -76,21 +76,26 @@ Done. Your site is now LLM-ready.
 
 ## How It Works
 
-```
-User request:    GET /page  →  normal HTML response (unchanged)
+Two triggers serve markdown:
 
-LLM bot request: GET /page  (User-Agent: GPTBot)
-                     ↓
-                 middleware detects bot
-                     ↓
-                 rewrite to /_llm/page
-                     ↓
-                 route handler fetches original HTML
-                 (with bypass header to avoid loop)
-                     ↓
-                 sanitize → extract main content → convert to markdown
-                     ↓
-                 Response: text/markdown with canonical link
+**1. Stripe-style `.md` URL** (works for anyone):
+```
+GET /twitter/like.md  →  markdown version of /twitter/like
+```
+
+**2. LLM bot auto-detection** (transparent):
+```
+GET /twitter/like  (User-Agent: GPTBot)  →  markdown automatically
+```
+
+Both paths use the same pipeline:
+
+```
+request → middleware detects .md URL or LLM bot
+  → rewrite to internal /llm-md/[...path] route handler
+  → handler fetches original HTML (with bypass header to avoid loop)
+  → sanitize → extract main content → convert to markdown
+  → Response: text/markdown with canonical link header
 ```
 
 The library fetches your page's HTML (the same HTML users see), strips navigation/footer/scripts, sanitizes against prompt injection, and converts to clean Markdown.

@@ -47,6 +47,9 @@ export interface LlmReadyConfig {
     /** Strip CSS-hidden content. Default: true */
     stripHiddenContent?: boolean;
   };
+
+  /** @internal Used by Next.js adapter to pass actual server origin for HTTP calls */
+  _fetchOrigin?: string;
 }
 
 export interface LlmsTxtPage {

@@ -20,13 +20,17 @@ export function createMarkdownHandler(config: LlmReadyConfig) {
   ): Promise<NextResponse> {
     const pathSegments = params.path || [];
     const originalPath = '/' + pathSegments.join('/');
-    const siteUrl = config.siteUrl.replace(/\/+$/, '');
-    const pageUrl = `${siteUrl}${originalPath}`;
+
+    // Use the actual origin passed by middleware (works on localhost and prod)
+    const origin =
+      request.headers.get('x-llm-ready-origin') ||
+      config.siteUrl.replace(/\/+$/, '');
+    const pageUrl = `${origin}${originalPath}`;
+    const canonicalUrl = `${config.siteUrl.replace(/\/+$/, '')}${originalPath}`;
 
     console.log(`[llm-ready] Markdown route handler called for: ${originalPath}`);
 
     try {
-      // Fetch the original HTML page with bypass header to avoid infinite loop
       console.log(`[llm-ready] Fetching original HTML from: ${pageUrl}`);
       const htmlResponse = await fetch(pageUrl, {
         headers: {
@@ -71,8 +75,8 @@ export function createMarkdownHandler(config: LlmReadyConfig) {
         `[llm-ready] Fetched ${html.length} bytes of HTML, converting to markdown`
       );
 
-      // Convert HTML to Markdown
-      const result = convertHtmlToMarkdown(html, pageUrl, {
+      // Convert HTML to Markdown (use canonical URL for frontmatter)
+      const result = convertHtmlToMarkdown(html, canonicalUrl, {
         contentSelector: config.converter?.contentSelector,
         removeSelectors: config.converter?.removeSelectors,
         sanitize: {

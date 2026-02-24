@@ -32,10 +32,11 @@ export async function generateLlmsTxt(
   config: LlmReadyConfig
 ): Promise<string> {
   const siteUrl = config.siteUrl.replace(/\/+$/, '');
-  console.log(`[llm-ready] Generating llms.txt for ${siteUrl}`);
+  const fetchOrigin = (config._fetchOrigin || siteUrl).replace(/\/+$/, '');
+  console.log(`[llm-ready] Generating llms.txt for ${siteUrl} (fetching via ${fetchOrigin})`);
 
-  // 1. Discover all pages
-  const sitemapPages = await discoverPages(siteUrl, config.sitemap);
+  // 1. Discover all pages (use fetchOrigin for HTTP calls)
+  const sitemapPages = await discoverPages(fetchOrigin, config.sitemap);
   console.log(`[llm-ready] Discovered ${sitemapPages.length} pages for llms.txt`);
 
   // 2. Filter out excluded paths
@@ -47,18 +48,24 @@ export async function generateLlmsTxt(
     `[llm-ready] After exclusions: ${filteredPages.length} pages (excluded ${sitemapPages.length - filteredPages.length})`
   );
 
-  // 3. Fetch metadata for pages (title + description)
-  const pagesWithMeta = await fetchPageMetadata(filteredPages, siteUrl);
+  // 3. Rewrite page URLs from fetchOrigin to canonical siteUrl
+  const canonicalPages = filteredPages.map((page) => ({
+    ...page,
+    url: page.url.replace(fetchOrigin, siteUrl),
+  }));
 
-  // 4. Group into sections
+  // 4. Fetch metadata for pages (use fetchOrigin URLs for HTTP, but store canonical)
+  const pagesWithMeta = await fetchPageMetadata(filteredPages, canonicalPages, fetchOrigin, siteUrl);
+
+  // 5. Group into sections
   const optionalPatterns = config.llmsTxt?.optional || OPTIONAL_PATTERNS_DEFAULT;
   const customSections = config.llmsTxt?.sections;
   const sections = groupIntoSections(pagesWithMeta, siteUrl, optionalPatterns, customSections);
 
-  // 5. Build site header
-  const siteName = await fetchSiteName(siteUrl);
+  // 6. Build site header
+  const siteName = await fetchSiteName(fetchOrigin);
   const siteDescription =
-    config.llmsTxt?.description || (await fetchSiteDescription(siteUrl));
+    config.llmsTxt?.description || (await fetchSiteDescription(fetchOrigin));
 
   // 6. Generate markdown
   const llmsTxt = buildLlmsTxt(siteName, siteDescription, sections);
@@ -212,20 +219,24 @@ function autoGroupSections(
 }
 
 async function fetchPageMetadata(
-  pages: SitemapPage[],
+  fetchPages: SitemapPage[],
+  canonicalPages: SitemapPage[],
+  fetchOrigin: string,
   siteUrl: string
 ): Promise<LlmsTxtPage[]> {
   console.log(
-    `[llm-ready] Fetching metadata for ${pages.length} pages (batched)`
+    `[llm-ready] Fetching metadata for ${fetchPages.length} pages (batched)`
   );
 
   const BATCH_SIZE = 10;
   const results: LlmsTxtPage[] = [];
 
-  for (let i = 0; i < pages.length; i += BATCH_SIZE) {
-    const batch = pages.slice(i, i + BATCH_SIZE);
+  for (let i = 0; i < fetchPages.length; i += BATCH_SIZE) {
+    const fetchBatch = fetchPages.slice(i, i + BATCH_SIZE);
+    const canonicalBatch = canonicalPages.slice(i, i + BATCH_SIZE);
     const batchResults = await Promise.all(
-      batch.map(async (page) => {
+      fetchBatch.map(async (page, idx) => {
+        const canonicalUrl = canonicalBatch[idx].url;
         try {
           const res = await fetch(page.url, {
             headers: { 'User-Agent': 'llm-ready/metadata-fetch' },
@@ -233,14 +244,14 @@ async function fetchPageMetadata(
           if (!res.ok) return null;
 
           const html = await res.text();
-          const title = extractMetaTitle(html) || getPathLabel(page.url, siteUrl);
+          const title = extractMetaTitle(html) || getPathLabel(canonicalUrl, siteUrl);
           const description = extractMetaDescription(html);
 
-          return { url: page.url, title, description };
+          return { url: canonicalUrl, title, description };
         } catch {
           return {
-            url: page.url,
-            title: getPathLabel(page.url, siteUrl),
+            url: canonicalUrl,
+            title: getPathLabel(canonicalUrl, siteUrl),
             description: undefined,
           };
         }
@@ -310,7 +321,12 @@ function extractMetaDescription(html: string): string | undefined {
 }
 
 function getPath(url: string, siteUrl: string): string {
-  return url.replace(siteUrl, '').replace(/\/+$/, '') || '/';
+  try {
+    const parsed = new URL(url);
+    return parsed.pathname.replace(/\/+$/, '') || '/';
+  } catch {
+    return url.replace(siteUrl, '').replace(/\/+$/, '') || '/';
+  }
 }
 
 function getPathLabel(url: string, siteUrl: string): string {
