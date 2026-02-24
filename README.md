@@ -72,25 +72,187 @@ Cloudflare launched [Markdown for Agents](https://blog.cloudflare.com/markdown-f
 
 | | Cloudflare Markdown for Agents | llm-ready |
 |---|---|---|
-| **Price** | $200+/month (Pro plan required) | **Free and open-source** |
+| **Price** | $25+/month (Pro or Business only) | **Free and open-source** |
 | **How it works** | Edge conversion at CDN level | Application-level conversion |
 | **Requires Cloudflare** | Yes | No — works anywhere |
 | **Framework support** | Any (CDN-level) | Next.js (more coming) |
-| **`.md` URL support** | No (Accept header only) | Yes — Stripe-style `/page.md` URLs |
+| **`.md` URL support** | No (Accept header only) | Yes — `/page.md` URLs for any page |
 | **`llms.txt` generation** | No | Yes — auto-generated from sitemap |
-| **Bot auto-detection** | No (manual config) | Yes — 17+ LLM bots detected |
+| **Bot auto-detection** | No (manual config) | Yes — 17+ LLM bots detected (list is actively maintained) |
 | **Content sanitization** | Basic | Advanced — prompt injection protection |
 | **Self-hosted** | No | Yes — runs on your server |
 
+## Who Already Does This
+
+The `.md` URL pattern and Markdown-first approach for AI bots is already used in production by major companies:
+
+**Stripe** serves Markdown versions of their entire documentation. Any docs URL + `.md` returns clean Markdown:
+- [https://docs.stripe.com/mcp](https://docs.stripe.com/mcp) — HTML for humans
+- [https://docs.stripe.com/mcp.md](https://docs.stripe.com/mcp.md) — Markdown for LLMs
+
+Stripe authors content in [Markdoc](https://markdoc.dev/) (their open-source framework) and renders two outputs from the same source: styled HTML for browsers and plain Markdown for AI tools. Their [Building with LLMs](https://docs.stripe.com/building-with-llms) guide explains why: Markdown contains fewer formatting tokens, includes collapsed content that HTML hides, and lets LLMs parse document hierarchy naturally.
+
+**Vercel / Next.js** serves their full documentation as a single file for LLMs:
+- [https://nextjs.org/docs/llms-full.txt](https://nextjs.org/docs/llms-full.txt)
+
+**Cloudflare** converts HTML to Markdown at the edge for Pro/Business customers via `Accept: text/markdown` content negotiation.
+
+`llm-ready` brings this same capability to any Next.js site — for free, without rewriting your content pipeline.
+
+## Integration Prompt (Cursor / Claude Code)
+
+Copy this prompt into **Cursor**, **Claude Code**, **Windsurf**, or any AI coding assistant to automatically integrate `llm-ready` into your project:
+
+```
+Integrate the npm library "llm-ready" (https://github.com/alxgntv/llm-ready) into my Next.js project.
+
+## What llm-ready does
+
+llm-ready is a library that automatically converts your HTML pages into clean Markdown for LLM bots. It works via:
+- `.md` URLs — append .md to any page URL to get its Markdown version (/about → /about.md)
+- Auto-detection of LLM bots by User-Agent (GPTBot, ClaudeBot, PerplexityBot, etc.) — serves them Markdown transparently
+- Accept header — responds to Accept: text/markdown
+- /llms.txt — auto-generated site catalog per llmstxt.org spec
+
+The pipeline: middleware detects .md URL or LLM bot → rewrites to internal /llm-md/[...path] route handler → handler fetches original HTML (with bypass header to avoid loop) → sanitize → extract main content → convert to markdown → respond with text/markdown and canonical link header.
+
+## Configuration reference (LlmReadyConfig)
+
+The config file is llm-ready.config.ts in the project root. Here is the full interface with all available options:
+
+interface LlmReadyConfig {
+  // REQUIRED. Base URL of the site (e.g. 'https://example.com').
+  // Use environment variable like process.env.NEXT_PUBLIC_SITE_URL or hardcode.
+  siteUrl: string;
+
+  // OPTIONAL. Path to sitemap.xml (e.g. '/sitemap.xml', '/server-sitemap.xml').
+  // If not set, auto-discovered: checks robots.txt → tries /sitemap.xml, /sitemap_index.xml → crawls homepage links.
+  sitemap?: string;
+
+  // OPTIONAL. Glob patterns for paths to EXCLUDE from markdown conversion.
+  // Default: ['/api/*', '/_next/*']
+  // Add all private/authenticated routes here: dashboard, admin, onboarding, internal API routes, etc.
+  // The /llm-md/* path should always be excluded to prevent recursion.
+  exclude?: string[];
+
+  // OPTIONAL. llms.txt generation settings.
+  llmsTxt?: {
+    // Custom sections: key = section title, value = glob patterns for URLs.
+    // Pages matching patterns are grouped under that heading in llms.txt.
+    // Example: { 'Documentation': ['/docs/*'], 'Blog': ['/blog/*'] }
+    sections?: Record<string, string[]>;
+
+    // URL patterns placed into the "## Optional" section of llms.txt.
+    // Use for legal/secondary pages: terms, privacy, cookie-policy, about, etc.
+    optional?: string[];
+
+    // Manual site description. Overrides auto-detected <meta description> from homepage.
+    description?: string;
+  };
+
+  // OPTIONAL. Cache settings.
+  cache?: {
+    // TTL in seconds for cached markdown responses. Default: 86400 (24 hours).
+    ttl?: number;
+  };
+
+  // OPTIONAL. Bot detection settings.
+  bots?: {
+    // Additional User-Agent substrings to detect as LLM bots (on top of the built-in list).
+    additionalUserAgents?: string[];
+
+    // User-Agent substrings to block with 403 Forbidden. Example: ['Bytespider']
+    blockUserAgents?: string[];
+  };
+
+  // OPTIONAL. HTML-to-Markdown converter settings.
+  converter?: {
+    // CSS selector for main content area. Default: auto-detect (main, article, [role=main]).
+    // Set if your site uses a non-standard layout container.
+    contentSelector?: string;
+
+    // Additional CSS selectors to remove from HTML before conversion.
+    // Example: ['[data-ad]', '.cookie-banner', '.sidebar']
+    removeSelectors?: string[];
+  };
+
+  // OPTIONAL. Security settings.
+  security?: {
+    // Max HTML content size in bytes. Default: 2MB (2 * 1024 * 1024).
+    // Rejects pages larger than this to prevent abuse.
+    maxContentSize?: number;
+
+    // Strip CSS-hidden content (display:none, visibility:hidden, opacity:0).
+    // Default: true. Protects against prompt injection via hidden text.
+    stripHiddenContent?: boolean;
+  };
+}
+
+## Steps
+
+1. Run: npm install llm-ready
+
+2. Analyze my project:
+   - Find my middleware.ts file
+   - Find my next.config.js/ts
+   - Find my sitemap (sitemap.xml, server-sitemap.xml, or similar)
+   - Identify which paths are public pages and which are private (dashboard, admin, api routes)
+   - Check my .env files for the production site URL
+
+3. Create llm-ready.config.ts in the project root:
+   - siteUrl from my environment variables (e.g. process.env.NEXT_PUBLIC_SITE_URL) or package.json homepage
+   - sitemap path if my project has a non-standard sitemap location
+   - exclude patterns for all private/authenticated routes (dashboard, admin, onboarding, etc.) + /llm-md/*
+   - llmsTxt.optional for legal pages (terms, privacy, cookie-policy, about, etc.)
+   - bots.blockUserAgents for any bots I want to block (e.g. ['Bytespider'])
+   - converter.contentSelector if my pages use a non-standard main content container
+   - converter.removeSelectors for ads, banners, or other elements that should not appear in markdown
+
+4. Update my middleware.ts:
+   - Add import: import { llmReady } from 'llm-ready/next';
+   - Add import: import llmReadyConfig from '../llm-ready.config'; (adjust path based on project structure)
+   - Add llmReady(request, llmReadyConfig) check as the FIRST thing in the middleware function (before any other logic)
+   - If the result is not null, return it immediately
+   - Add '/(.*)\\.md' to the middleware matcher array so .md URLs are processed
+   - Do NOT remove or change any existing middleware logic
+
+5. Create two route handler files:
+   - app/llm-md/[...path]/route.ts:
+     import { createMarkdownHandler } from 'llm-ready/next';
+     import config from '../../../../llm-ready.config'; // adjust relative path
+     export const GET = createMarkdownHandler(config);
+     export const revalidate = 86400;
+
+   - app/llms.txt/route.ts:
+     import { createLlmsTxtHandler } from 'llm-ready/next';
+     import config from '../../../llm-ready.config'; // adjust relative path
+     export const GET = createLlmsTxtHandler(config);
+     export const revalidate = 86400;
+
+6. Update my robots.txt:
+   - Add User-agent + Crawl-delay: 10 rules for GPTBot, ClaudeBot, Google-Extended, PerplexityBot
+   - Add Disallow: / for Bytespider (or any bots specified in config.bots.blockUserAgents)
+   - Add Allow: /llms.txt
+   - Keep all existing rules unchanged
+
+7. Test by starting the dev server and running:
+   - curl http://localhost:3000/<some-real-page>.md (use an actual page from my site)
+   - curl http://localhost:3000/llms.txt
+   - curl -H "User-Agent: GPTBot/1.0" http://localhost:3000/<some-real-page>
+   - Verify all three return clean markdown content, not HTML or errors
+
+Important: Do NOT break any existing functionality. The llmReady() middleware check returns null for normal users — existing behavior is completely unchanged.
+```
+
 ## What It Does
 
-1. **Stripe-style `.md` URLs** — append `.md` to any page URL to get Markdown (`/about` → `/about.md`)
-2. **Auto-detect LLM bots** — GPTBot, ClaudeBot, PerplexityBot and 14 more — serves them Markdown transparently
+1. **`.md` URLs for every page** — append `.md` to any URL to get its Markdown version (`/about` → `/about.md`)
+2. **Auto-detect LLM bots** — GPTBot, ClaudeBot, PerplexityBot and 14+ more — serves them Markdown transparently
 3. **Accept header support** — responds to `Accept: text/markdown` (used by Claude Code, OpenCode)
-4. **Generate `/llms.txt`** — auto-generated catalog of your site per [llmstxt.org](https://llmstxt.org) spec
+4. **Generate `/llms.txt`** — auto-generated site catalog per [llmstxt.org](https://llmstxt.org) spec
 5. **Security** — strips hidden CSS content, invisible Unicode, HTML comments (prompt injection protection)
 
-## Quick Start
+## Manual Setup
 
 ### 1. Install
 
@@ -112,7 +274,7 @@ const config: LlmReadyConfig = {
 export default config;
 ```
 
-That's it for minimal config. The library auto-discovers your sitemap from `robots.txt` or standard paths.
+The library auto-discovers your sitemap from `robots.txt` or standard paths.
 
 ### 3. Add to middleware
 
@@ -130,12 +292,12 @@ export async function middleware(request: NextRequest) {
 }
 ```
 
-Make sure your middleware matcher includes `.md` paths:
+Add `.md` to your middleware matcher:
 
 ```typescript
 export const config = {
   matcher: [
-    '/(.*)\\.md',  // All .md requests
+    '/(.*)\\.md',
     // ... your existing matchers
   ],
 };
@@ -165,55 +327,11 @@ export const revalidate = 86400;
 
 Done. Visit `https://yoursite.com/any-page.md` to see it in action.
 
-## Integration Prompt
-
-Copy this prompt into **Cursor**, **Claude Code**, or any AI coding assistant to automatically integrate `llm-ready` into your project:
-
-```
-Integrate the npm library "llm-ready" into my Next.js project. Follow these steps:
-
-1. Run: npm install llm-ready
-2. Analyze my project:
-   - Find my middleware.ts file
-   - Find my next.config.js/ts
-   - Find my sitemap (sitemap.xml, server-sitemap.xml, or similar)
-   - Identify which paths are public pages and which are private (dashboard, admin, api routes)
-   - Check my .env files for the production site URL
-
-3. Create llm-ready.config.ts in the project root with:
-   - siteUrl from my environment variables or package.json homepage
-   - sitemap path (auto-detect from robots.txt or project files)
-   - exclude patterns for all private/authenticated routes (dashboard, admin, api, etc.)
-   - llmsTxt.optional patterns for legal pages (terms, privacy, cookie-policy, etc.)
-
-4. Update my middleware.ts:
-   - Add import for llmReady from 'llm-ready/next' and my config
-   - Add llmReady() check as the FIRST thing in the middleware function (before any other logic)
-   - Add '/(.*)\\.md' to the middleware matcher array so .md URLs are processed
-
-5. Create two route handler files:
-   - app/llm-md/[...path]/route.ts — with createMarkdownHandler and revalidate = 86400
-   - app/llms.txt/route.ts — with createLlmsTxtHandler and revalidate = 86400
-   - Adjust import paths to match my project structure
-
-6. Update my robots.txt:
-   - Add Crawl-delay: 10 rules for GPTBot, ClaudeBot, Google-Extended, PerplexityBot
-   - Add Disallow: / for Bytespider
-   - Keep all existing rules unchanged
-
-7. Test by starting the dev server and running:
-   - curl http://localhost:3000/ .md (replace with an actual page from my site)
-   - curl http://localhost:3000/llms.txt
-   - Verify both return clean content, not HTML or errors
-
-Important: Do NOT break any existing functionality. The llmReady() middleware check returns null for normal users, so existing behavior is completely unchanged.
-```
-
 ## How It Works
 
 Two triggers serve markdown:
 
-**1. Stripe-style `.md` URL** (works for anyone):
+**1. `.md` URL** (works for anyone):
 ```
 GET /pricing.md  →  markdown version of /pricing
 ```
@@ -281,6 +399,8 @@ const config: LlmReadyConfig = {
 
 ## Detected Bots
 
+The list is actively maintained and updated as new AI crawlers appear.
+
 | Bot | Company |
 |-----|---------|
 | GPTBot, ChatGPT-User, OAI-SearchBot | OpenAI |
@@ -297,6 +417,8 @@ const config: LlmReadyConfig = {
 | Diffbot | Diffbot |
 
 Also detects `Accept: text/markdown` header (used by Claude Code, OpenCode, and other AI tools).
+
+Missing a bot? [Open an issue](https://github.com/alxgntv/llm-ready/issues) or submit a PR.
 
 ## Security
 
@@ -319,4 +441,12 @@ Protects against known attack vectors on HTML-to-markdown pipelines:
 
 ## License
 
-MIT
+MIT — with attribution.
+
+You are free to use, modify, and distribute this library in any project (commercial or otherwise), provided you include a visible link back to the original repository:
+
+```
+https://github.com/alxgntv/llm-ready
+```
+
+This can be in your project's README, documentation, or a comment in the source code where the library is imported. The attribution requirement ensures the open-source community can discover and benefit from the project.
