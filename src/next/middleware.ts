@@ -62,29 +62,18 @@ export function llmReady(
     return rewriteToMarkdown(request, originalPath);
   }
 
-  // Skip static files for bot detection
-  if (isStaticFile(pathname)) return null;
-
-  // Check exclusions
-  const excludePatterns = config.exclude || [];
-  if (excludePatterns.some((p) => matchGlob(pathname, p))) return null;
-
-  // --- Trigger 2: LLM bot detection ---
+  // --- Bot detection (no auto-redirect, just block if configured) ---
   const userAgent = request.headers.get('user-agent');
   const acceptHeader = request.headers.get('accept');
   const result = detectBot(userAgent, acceptHeader, config.bots);
 
-  if (!result.isBot) return null;
-
-  if (result.isBlocked) {
+  if (result.isBot && result.isBlocked) {
     console.log(`[llm-ready] Blocked bot: ${result.botName}, returning 403`);
     return new NextResponse('Forbidden', { status: 403 });
   }
 
-  console.log(
-    `[llm-ready] LLM bot detected (${result.botName || 'Accept:text/markdown'}), serving markdown for ${pathname}`
-  );
-  return rewriteToMarkdown(request, pathname);
+  // Bots get normal HTML — they can discover .md via <link rel="alternate"> or /llms.txt
+  return null;
 }
 
 /** Rewrite request to the internal markdown route handler */

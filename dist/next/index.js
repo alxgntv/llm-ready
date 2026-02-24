@@ -115,28 +115,21 @@ function llmReady(request, config) {
   if (pathname.endsWith(".md")) {
     const originalPath = pathname.slice(0, -3);
     if (isStaticFile(originalPath)) return null;
-    const excludePatterns2 = config.exclude || [];
-    if (excludePatterns2.some((p) => matchGlob(originalPath, p))) return null;
+    const excludePatterns = config.exclude || [];
+    if (excludePatterns.some((p) => matchGlob(originalPath, p))) return null;
     console.log(
       `[llm-ready] .md URL requested: ${pathname} \u2192 serving markdown for ${originalPath}`
     );
     return rewriteToMarkdown(request, originalPath);
   }
-  if (isStaticFile(pathname)) return null;
-  const excludePatterns = config.exclude || [];
-  if (excludePatterns.some((p) => matchGlob(pathname, p))) return null;
   const userAgent = request.headers.get("user-agent");
   const acceptHeader = request.headers.get("accept");
   const result = detectBot(userAgent, acceptHeader, config.bots);
-  if (!result.isBot) return null;
-  if (result.isBlocked) {
+  if (result.isBot && result.isBlocked) {
     console.log(`[llm-ready] Blocked bot: ${result.botName}, returning 403`);
     return new import_server.NextResponse("Forbidden", { status: 403 });
   }
-  console.log(
-    `[llm-ready] LLM bot detected (${result.botName || "Accept:text/markdown"}), serving markdown for ${pathname}`
-  );
-  return rewriteToMarkdown(request, pathname);
+  return null;
 }
 function rewriteToMarkdown(request, originalPath) {
   const llmPath = `${LLM_PATH_PREFIX}${originalPath}`;
