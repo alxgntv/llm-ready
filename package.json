@@ -1,0 +1,72 @@
+{
+  "name": "llm-ready",
+  "version": "0.1.0",
+  "description": "Universal npm library that makes any website LLM-ready. Auto-converts HTML pages to Markdown for AI bots, generates llms.txt, detects LLM crawlers.",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    },
+    "./next": {
+      "types": "./dist/next/index.d.ts",
+      "import": "./dist/next/index.mjs",
+      "require": "./dist/next/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run build"
+  },
+  "keywords": [
+    "llm",
+    "llms-txt",
+    "markdown",
+    "ai",
+    "bot",
+    "seo",
+    "nextjs",
+    "middleware",
+    "html-to-markdown",
+    "gptbot",
+    "claudebot",
+    "crawler"
+  ],
+  "author": "alxgntv",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/alxgntv/llm-ready"
+  },
+  "homepage": "https://github.com/alxgntv/llm-ready#readme",
+  "dependencies": {
+    "turndown": "^7.2.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.14",
+    "@types/turndown": "^5.0.5",
+    "next": "^14.2.35",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "tsup": "^8.0.0",
+    "typescript": "^5.0.0"
+  },
+  "peerDependencies": {
+    "next": ">=13.0.0"
+  },
+  "peerDependenciesMeta": {
+    "next": {
+      "optional": true
+    }
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
